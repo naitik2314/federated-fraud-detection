@@ -2,7 +2,8 @@ TODO
 - Add Requirments.txt ✅
 - Verify Installations ✅
 - Dataset selection and Preparation ✅
-- Define base line model 
+- Define base line model ✅
+- Build Client Model
 
 
 IMP Links
