@@ -4,7 +4,7 @@ from sklearn.preprocessing import StandardScaler
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 
-data_path = 'Data\creditcard.csv'
+data_path = 'Data/creditcard.csv'
 NUM_CLIENTS = 5
 BATCH_SIZE = 64
 
