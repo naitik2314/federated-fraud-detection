@@ -3,7 +3,8 @@ TODO
 - Verify Installations ✅
 - Dataset selection and Preparation ✅
 - Define base line model ✅
-- Build Client Model
+- Build Client Model ✅
+- Simulation Script
 
 
 IMP Links
