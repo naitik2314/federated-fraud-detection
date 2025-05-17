@@ -60,7 +60,7 @@ def main():
         # In a more advanced setup, clients would have their own local validation split.
         valloader = trainloader # Or a dedicated validation split for the client
         
-        return FraudDetectionClient(model_fn=model_fn, trainloader=trainloader, valloader=valloader)
+        return FraudDetectionClient(model_fn=model_fn, trainloader=trainloader, valloader=valloader).to_client()
 
     # --- 4. Define Server-Side Evaluation Function (get_evaluate_fn) ---
     # This function is passed to the strategy to evaluate the global model on the server
