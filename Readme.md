@@ -1,6 +1,6 @@
 TODO
 - Add Requirments.txt ✅
-- Verify Installations
+- Verify Installations ✅
 - Dataset selection and Preparation 
 
 
