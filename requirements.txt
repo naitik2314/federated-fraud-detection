@@ -8,3 +8,6 @@ flwr[simulation]>=1.8.0
 numpy>=1.23.0
 pandas>=1.5.0
 scikit-learn>=1.2.0
+
+# Differential Privacy
+opacus
