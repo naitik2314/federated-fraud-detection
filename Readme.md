@@ -6,6 +6,7 @@ TODO
 - Build Client Model ✅
 - Simulation Script ✅
 - Implement Dirichlet distribution for more real world simulation ✅
+- Add Differential Privacy (DP)
 
 
 IMP Links
