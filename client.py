@@ -4,15 +4,17 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from collections import OrderedDict
 
-from Model.model import FraudNet # Make sure your model.py file is in Model folder in the root directory of this project, or modify this accordingly
+from Model.model import FraudNet 
 
-# Determine if a GPU is available and set the device accordingly
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f"Client-side training on {DEVICE}") # Clarified print statement
+# This print statement will appear for each client actor if not guarded by a main check
+# print(f"Client-side components loaded. Training will be on {DEVICE}") 
 
-# Helper function for training the model on a client
 def train(net: FraudNet, trainloader: DataLoader, epochs: int, learning_rate: float):
-    """Train the network on the training set."""
+    if len(trainloader.dataset) == 0:
+        # print(f"Client has no data to train on. Skipping training.")
+        return 0 # No examples trained
+        
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
     net.train()
@@ -32,9 +34,11 @@ def train(net: FraudNet, trainloader: DataLoader, epochs: int, learning_rate: fl
             num_batches += 1
     return len(trainloader.dataset)
 
-# Helper function for evaluating the model on a client
 def test(net: FraudNet, testloader: DataLoader):
-    """Evaluate the network on the test set."""
+    if len(testloader.dataset) == 0:
+        # print("Client has no data to evaluate on.")
+        return float('inf'), 0.0, 0 # Infinite loss, 0 accuracy, 0 examples
+        
     criterion = nn.BCEWithLogitsLoss()
     correct, total, loss = 0, 0, 0.0
     net.eval()
@@ -48,26 +52,24 @@ def test(net: FraudNet, testloader: DataLoader):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             
-    accuracy = correct / total if total > 0 else 0.0 # Avoid division by zero
-    avg_loss = loss / len(testloader) if len(testloader) > 0 else float('inf') # Avoid division by zero
+    accuracy = correct / total if total > 0 else 0.0
+    avg_loss = loss / len(testloader) if len(testloader) > 0 else float('inf')
     return avg_loss, accuracy, len(testloader.dataset)
 
-
-# Define the Flower client
 class FraudDetectionClient(fl.client.NumPyClient):
     def __init__(self, model_fn, trainloader: DataLoader, valloader: DataLoader):
-        # model_fn is a function that returns an instance of FraudNet
         self.model_fn = model_fn 
-        self.model = self.model_fn().to(DEVICE) # Instantiate and move model to device
+        self.model = self.model_fn().to(DEVICE)
         self.trainloader = trainloader
         self.valloader = valloader 
+        # Guard the print statement to avoid repetition from Ray actors
+        # print(f"FraudDetectionClient initialized. Train batches: {len(trainloader)}, Val batches: {len(valloader)}. Device: {DEVICE}")
+
 
     def get_parameters(self, config):
-        """Return model parameters as a list of NumPy ndarrays."""
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
 
     def set_parameters(self, parameters):
-        """Update local model parameters with parameters received from the server."""
         params_dict = zip(self.model.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
         self.model.load_state_dict(state_dict, strict=True)
@@ -80,6 +82,8 @@ class FraudDetectionClient(fl.client.NumPyClient):
         num_examples_trained = train(self.model, self.trainloader, epochs=epochs, learning_rate=learning_rate)
         
         updated_parameters = self.get_parameters(config={})
+        # If num_examples_trained is 0, Flower might have issues with weighted averaging.
+        # It's better if clients with 0 data don't participate or are handled by strategy.
         return updated_parameters, num_examples_trained, {} 
 
     def evaluate(self, parameters, config):
@@ -88,5 +92,6 @@ class FraudDetectionClient(fl.client.NumPyClient):
         return float(loss), num_examples_eval, {"accuracy": float(accuracy)}
 
 if __name__ == '__main__':
-    print("Client.py loaded. Contains FraudDetectionClient and train/test helper functions.")
-    print(f"PyTorch will use: {DEVICE}")
+    print("client.py executed directly (for logging purposes only).")
+    print(f"PyTorch will use: {DEVICE} for client-side operations if instantiated.")
+    print("Contains: FraudDetectionClient, train(), test()")
