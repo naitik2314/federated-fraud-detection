@@ -4,8 +4,8 @@ TODO
 - Dataset selection and Preparation ✅
 - Define base line model ✅
 - Build Client Model ✅
-- Simulation Script
-- Implement Dirichlet distribution for more real world simulation
+- Simulation Script ✅
+- Implement Dirichlet distribution for more real world simulation ✅
 
 
 IMP Links
