@@ -171,7 +171,7 @@ class FraudDetectionClient(fl.client.NumPyClient):
         epochs = config.get("local_epochs", 1)
         learning_rate = config.get("learning_rate", 0.001)
         
-        dp_target_epsilon = config.get("dp_target_epsilon", 5.0) 
+        dp_target_epsilon = config.get("dp_target_epsilon", 2.0) 
         # It's crucial that target_delta is small, e.g., < 1/dataset_size
         # For simplicity, we use a fixed delta from config.
         # A more robust approach might involve clients calculating their own delta
@@ -183,11 +183,6 @@ class FraudDetectionClient(fl.client.NumPyClient):
         dp_target_delta = min(dp_target_delta, 1e-4) # Cap delta to a reasonable small value
 
         dp_max_grad_norm = config.get("dp_max_grad_norm", 1.0)
-        
-        # We need to pass a fresh model instance to train for DP if model is stateful with Opacus hooks
-        # or ensure Opacus detaches properly. For safety, let's use a fresh instance from model_fn for training.
-        # However, Opacus modifies the passed model in-place. So we use self.model.
-        # The key is proper detachment by the PrivacyEngine after training.
 
         num_examples_trained, spent_epsilon = train(
             self.model, self.trainloader, epochs, learning_rate,

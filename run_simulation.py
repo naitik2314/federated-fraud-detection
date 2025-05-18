@@ -25,7 +25,7 @@ NON_IID_ALPHA = 0.5
 
 # --- Differential Privacy Configuration ---
 DP_ENABLED = True # Set to False to run without DP
-DP_TARGET_EPSILON = 10.0  # Target privacy budget (epsilon) per client per round
+DP_TARGET_EPSILON = 2.0  # Target privacy budget (epsilon) per client per round
 # Delta should generally be smaller than 1/dataset_size.
 # Here, it's a global suggestion; client.py refines it slightly.
 DP_TARGET_DELTA = 1e-5   
