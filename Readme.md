@@ -5,6 +5,7 @@ TODO
 - Define base line model ✅
 - Build Client Model ✅
 - Simulation Script
+- Implement Dirichlet distribution for more real world simulation
 
 
 IMP Links
