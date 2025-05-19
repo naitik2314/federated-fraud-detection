@@ -6,9 +6,9 @@ from collections import OrderedDict
 
 from Model.model import FraudNet 
 
-# Opacus imports
+# Opacus imports (if DP is still intended to be used later, keep them)
 from opacus import PrivacyEngine
-from opacus.validators import ModuleValidator
+# from opacus.validators import ModuleValidator # Keep if you plan to re-enable detailed validation
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -17,144 +17,152 @@ def train(
     trainloader: DataLoader, 
     epochs: int, 
     learning_rate: float,
-    # DP parameters
-    dp_target_epsilon: float,
-    dp_target_delta: float,
-    dp_max_grad_norm: float
+    # DP parameters (keep if you plan to re-enable DP easily)
+    dp_target_epsilon: float = None, # Default to None if DP is optional
+    dp_target_delta: float = None,
+    dp_max_grad_norm: float = None
 ):
     if len(trainloader.dataset) == 0:
-        print(f"Client on {DEVICE} has no data to train on. Skipping DP training.")
-        return 0, 0.0 # No examples trained, no epsilon spent
-
-    # --- Model Validation for Opacus (Optional but good practice) ---
-    # errors = ModuleValidator.validate(net, strict=False)
-    # if errors:
-    #     print(f"Opacus ModuleValidator found issues: {errors}")
-    #     # net = ModuleValidator.fix(net) # Attempt to fix, or handle error
-    #     # print("Attempted to fix model with ModuleValidator.")
-    # For FraudNet, this should generally be fine.
-
+        # print(f"Client on {DEVICE} has no data to train on. Skipping training.")
+        return 0, 0.0 # No examples trained, no epsilon spent (if DP were active)
+        
     criterion = nn.BCEWithLogitsLoss()
-    # Use a standard optimizer; PrivacyEngine will wrap it or create a DPOptimizer.
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
 
-    # --- Initialize PrivacyEngine ---
-    privacy_engine = PrivacyEngine(
-        # secure_mode=False # Set to True for more secure random number generation if needed, can be slower
-    ) 
-    
-    # Opacus modifies the model, optimizer, and dataloader
-    # target_delta is crucial and should usually be << 1/dataset_size
-    # If dataset size is very small, using a fixed small delta might be necessary,
-    # but be aware of its privacy implications.
-    # For make_private_with_epsilon, Opacus expects the dataloader to determine sample size.
-    
-    # Ensure trainloader is not empty, otherwise make_private_with_epsilon can fail
-    if len(trainloader) == 0: # Checks number of batches
-        print(f"Client on {DEVICE} has an empty trainloader (0 batches). Skipping DP training.")
-        return 0, 0.0
+    privacy_engine = None # Initialize to None
+    model_dp = net # By default, use the passed net
+    optimizer_dp = optimizer
+    dataloader_dp = trainloader
 
-    try:
-        # net, optimizer, and trainloader are modified in-place by attach
-        # or new ones are returned if you use make_private variants.
-        # Let's re-assign to be clear, make_private_with_epsilon is convenient.
+    if dp_target_epsilon is not None and dp_target_delta is not None and dp_max_grad_norm is not None:
+        # print(f"Client on {DEVICE}: Initializing PrivacyEngine for DP training...")
+        privacy_engine = PrivacyEngine()
         
-        # Note: Opacus's `make_private_with_epsilon` will effectively run the training
-        # for the specified number of epochs by wrapping the dataloader.
-        # The actual training loop happens within this call if you use it directly for training,
-        # or you set it up and then run your own loop.
-        # For finer control, we will attach and run our own loop.
+        # Ensure trainloader is not empty for Opacus
+        if len(trainloader) == 0: # Checks number of batches
+            print(f"Client on {DEVICE} has an empty trainloader (0 batches). Skipping DP setup.")
+            # Fall back to non-DP training or return error? For now, let it try non-DP
+        else:
+            try:
+                model_dp, optimizer_dp, dataloader_dp = privacy_engine.make_private_with_epsilon(
+                    module=net,
+                    optimizer=optimizer,
+                    data_loader=trainloader,
+                    epochs=epochs,
+                    target_epsilon=dp_target_epsilon,
+                    target_delta=dp_target_delta,
+                    max_grad_norm=dp_max_grad_norm,
+                )
+                # print(f"Client on {DEVICE}: Attached PrivacyEngine.")
+            except Exception as e:
+                print(f"Client on {DEVICE}: Error initializing PrivacyEngine: {e}. Proceeding with non-DP training for this client.")
+                privacy_engine = None # Ensure it's None if setup failed
+                model_dp = net 
+                optimizer_dp = optimizer
+                dataloader_dp = trainloader
+    
+    model_dp.train()
+    for epoch in range(epochs):
+        # epoch_loss = 0.0
+        # num_batches = 0
+        for features, labels in dataloader_dp: 
+            features, labels = features.to(DEVICE), labels.to(DEVICE)
+            
+            optimizer_dp.zero_grad() 
+            outputs = model_dp(features) 
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer_dp.step()
+            
+            # epoch_loss += loss.item()
+            # num_batches += 1
+        # if num_batches > 0 and dp_target_epsilon is not None and privacy_engine: # Only print DP loss if DP active
+        #     print(f"Client on {DEVICE} - Epoch {epoch+1}/{epochs}, DP Loss: {epoch_loss/num_batches:.4f}")
+        # elif num_batches > 0 :
+        #     print(f"Client on {DEVICE} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/num_batches:.4f}")
 
-        # Attach PrivacyEngine to the optimizer
-        net.train() # Ensure model is in train mode before attaching
-        model_dp, optimizer_dp, dataloader_dp = privacy_engine.make_private_with_epsilon(
-            module=net,
-            optimizer=optimizer,
-            data_loader=trainloader,
-            epochs=epochs, # Total number of epochs this PE will be used for this model/optimizer/loader config
-            target_epsilon=dp_target_epsilon,
-            target_delta=dp_target_delta,
-            max_grad_norm=dp_max_grad_norm,
-            # poisson_sampling=True # Recommended for DP guarantees with shuffling
-        )
-        
-        # print(f"Client on {DEVICE}: Attached PrivacyEngine. Target Epsilon: {dp_target_epsilon}, Target Delta: {dp_target_delta}")
-
-        # --- DP Training Loop ---
-        for epoch in range(epochs): # This outer loop is for conceptual clarity; PE's dataloader_dp is epoch-aware
-            epoch_loss = 0.0
-            num_batches = 0
-            for features, labels in dataloader_dp: # Use the Opacus dataloader
-                features, labels = features.to(DEVICE), labels.to(DEVICE)
-                
-                optimizer_dp.zero_grad() 
-                outputs = model_dp(features) # Use the DP model
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer_dp.step()
-                
-                epoch_loss += loss.item()
-                num_batches += 1
-            # if num_batches > 0:
-            #     print(f"Client on {DEVICE} - Epoch {epoch+1}/{epochs}, DP Loss: {epoch_loss/num_batches:.4f}")
-            # else:
-            #     print(f"Client on {DEVICE} - Epoch {epoch+1}/{epochs}, No batches processed.")
-
-    except Exception as e:
-        print(f"Client on {DEVICE}: Error during DP training: {e}")
-        # Detach if error occurs to prevent issues with non-DP use later if model is reused
-        if hasattr(privacy_engine, 'detach'):
-             privacy_engine.detach()
-        return 0, 0.0 # Indicate failure or no training
 
     spent_epsilon = 0.0
-    try:
-        spent_epsilon = privacy_engine.get_epsilon(delta=dp_target_delta)
-        # print(f"Client on {DEVICE}: DP Training finished. Spent Epsilon: {spent_epsilon:.4f} (for delta={dp_target_delta})")
-    except Exception as e:
-        print(f"Client on {DEVICE}: Could not get epsilon. {e}")
-    
-    # Detach the privacy engine to return the model to a standard model
-    # This is important if the model instance is reused across rounds without re-initialization
-    # or if other non-DP operations are performed on it.
-    if hasattr(privacy_engine, 'detach'): # Older Opacus versions might not have it on PE directly
-        privacy_engine.detach()
-    elif hasattr(model_dp, 'detach'): # Check if model was wrapped and has detach
-        model_dp.detach()
-
-
+    if privacy_engine and dp_target_epsilon is not None: # If DP was active
+        try:
+            spent_epsilon = privacy_engine.get_epsilon(delta=dp_target_delta)
+            # print(f"Client on {DEVICE}: DP Training finished. Spent Epsilon: {spent_epsilon:.4f}")
+        except Exception as e:
+            print(f"Client on {DEVICE}: Could not get epsilon. {e}")
+        
+        # Detach the privacy engine
+        if hasattr(privacy_engine, 'detach'):
+            privacy_engine.detach()
+        elif hasattr(model_dp, 'detach'): # Check if model was wrapped and has detach
+             model_dp.detach()
+             
     return len(trainloader.dataset), spent_epsilon
 
 
-def test(net: FraudNet, testloader: DataLoader): # test function remains non-DP
+def test(net: nn.Module, testloader: DataLoader, device_to_use: torch.device = DEVICE):
+    """Evaluates the model and returns loss, detailed metrics, and number of samples."""
     if len(testloader.dataset) == 0:
-        return float('inf'), 0.0, 0 
-        
+        # Return structure consistent with expected metrics
+        metrics = {"accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1_score": 0.0,
+                   "true_positives": 0, "false_positives": 0, 
+                   "true_negatives": 0, "false_negatives": 0}
+        return float('inf'), metrics, 0 
+            
     criterion = nn.BCEWithLogitsLoss()
-    correct, total, loss = 0, 0, 0.0
+    loss_sum = 0.0 # Use loss_sum to accumulate loss correctly
+    
+    true_positives = 0
+    false_positives = 0
+    true_negatives = 0
+    false_negatives = 0
+    
+    total_samples = 0
+
     net.eval()
+    net.to(device_to_use) 
     with torch.no_grad():
         for features, labels in testloader:
-            features, labels = features.to(DEVICE), labels.to(DEVICE)
+            features, labels = features.to(device_to_use), labels.to(device_to_use)
             outputs = net(features)
-            loss += criterion(outputs, labels).item()
+            # Sum loss for averaging later, weighted by batch size
+            loss_sum += criterion(outputs, labels).item() * features.size(0) 
             
-            predicted = torch.sigmoid(outputs) > 0.5 
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+            probs = torch.sigmoid(outputs)
+            predicted = (probs > 0.5).float() 
             
-    accuracy = correct / total if total > 0 else 0.0
-    avg_loss = loss / len(testloader) if len(testloader) > 0 else float('inf')
-    return avg_loss, accuracy, len(testloader.dataset)
+            total_samples += labels.size(0)
+
+            true_positives += ((predicted == 1) & (labels == 1)).sum().item()
+            false_positives += ((predicted == 1) & (labels == 0)).sum().item()
+            true_negatives += ((predicted == 0) & (labels == 0)).sum().item()
+            false_negatives += ((predicted == 0) & (labels == 1)).sum().item()
+    
+    avg_loss = loss_sum / total_samples if total_samples > 0 else float('inf')
+    accuracy = (true_positives + true_negatives) / total_samples if total_samples > 0 else 0.0
+    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
+    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+    
+    metrics = {
+        "accuracy": float(accuracy),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1_score": float(f1),
+        "true_positives": true_positives,
+        "false_positives": false_positives,
+        "true_negatives": true_negatives,
+        "false_negatives": false_negatives
+    }
+    
+    return avg_loss, metrics, total_samples
 
 
 class FraudDetectionClient(fl.client.NumPyClient):
     def __init__(self, model_fn, trainloader: DataLoader, valloader: DataLoader):
         self.model_fn = model_fn 
-        self.model = self.model_fn().to(DEVICE) # Original non-DP model is stored
+        self.model = self.model_fn().to(DEVICE)
         self.trainloader = trainloader
         self.valloader = valloader
-        # print(f"FraudDetectionClient initialized on {DEVICE}. Train batches: {len(trainloader)}, Val batches: {len(valloader)}.")
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
@@ -165,24 +173,27 @@ class FraudDetectionClient(fl.client.NumPyClient):
         self.model.load_state_dict(state_dict, strict=True)
 
     def fit(self, parameters, config):
-        self.set_parameters(parameters) # Load global model parameters
+        self.set_parameters(parameters) 
 
-        # Extract DP parameters from config
         epochs = config.get("local_epochs", 1)
         learning_rate = config.get("learning_rate", 0.001)
         
-        dp_target_epsilon = config.get("dp_target_epsilon", 2.0) 
-        # It's crucial that target_delta is small, e.g., < 1/dataset_size
-        # For simplicity, we use a fixed delta from config.
-        # A more robust approach might involve clients calculating their own delta
-        # or the server providing a global delta based on overall participant numbers.
-        # Opacus's make_private_with_epsilon uses len(dataloader) for sample rate,
-        # so it needs a non-empty dataloader.
-        num_train_samples = len(self.trainloader.dataset)
-        dp_target_delta = config.get("dp_target_delta", 1e-5 if num_train_samples == 0 else 1.0 / (num_train_samples * 10) ) # Ensure delta is smaller than 1/N
-        dp_target_delta = min(dp_target_delta, 1e-4) # Cap delta to a reasonable small value
+        # DP parameters from config (will be None if DP_ENABLED is False in run_simulation.py)
+        dp_target_epsilon = config.get("dp_target_epsilon", None) 
+        dp_target_delta = config.get("dp_target_delta", None)
+        dp_max_grad_norm = config.get("dp_max_grad_norm", None)
 
-        dp_max_grad_norm = config.get("dp_max_grad_norm", 1.0)
+        # Refine delta if DP is active and num_train_samples > 0
+        if dp_target_epsilon is not None: # Check if DP is meant to be active
+            num_train_samples = len(self.trainloader.dataset)
+            if num_train_samples > 0 :
+                 # Ensure delta is smaller than 1/N for this client's dataset
+                calculated_delta = 1.0 / (num_train_samples * 10) 
+                # Use the smaller of the configured delta or calculated, capping at a reasonable max
+                dp_target_delta = min(config.get("dp_target_delta", 1e-5), calculated_delta, 1e-4)
+            else: # If no samples, DP train won't run, but set a default delta from config
+                dp_target_delta = config.get("dp_target_delta", 1e-5)
+
 
         num_examples_trained, spent_epsilon = train(
             self.model, self.trainloader, epochs, learning_rate,
@@ -194,10 +205,10 @@ class FraudDetectionClient(fl.client.NumPyClient):
         updated_parameters = self.get_parameters(config={})
         return updated_parameters, num_examples_trained, fit_metrics
 
-    def evaluate(self, parameters, config): # Evaluation is non-DP
+    def evaluate(self, parameters, config): 
         self.set_parameters(parameters)
-        loss, accuracy, num_examples_eval = test(self.model, self.valloader)
-        return float(loss), num_examples_eval, {"accuracy": float(accuracy)}
+        avg_loss, metrics_dict, num_examples_eval = test(self.model, self.valloader, DEVICE)
+        return float(avg_loss), num_examples_eval, metrics_dict
 
 if __name__ == '__main__':
     print("client.py executed directly (for informational purposes only).")
