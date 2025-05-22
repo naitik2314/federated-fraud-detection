@@ -19,7 +19,7 @@ LEARNING_RATE = 0.001
 DATA_PATH = "Data/creditcard.csv" 
 SEED = 42 
 
-NON_IID_ALPHA = 0.5 
+NON_IID_ALPHA = 5.0 
 # NON_IID_ALPHA = None 
 
 DP_ENABLED = False 

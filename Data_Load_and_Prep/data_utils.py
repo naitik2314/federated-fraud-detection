@@ -141,7 +141,7 @@ if __name__ == '__main__':
     # Class distribution printout is now inside the IID block of create_partitioned_dataloaders
 
     print("\n--- Testing Non-IID data partitioning (alpha=0.5) ---")
-    NON_IID_ALPHA_EXAMPLE = 0.5 
+    NON_IID_ALPHA_EXAMPLE = 5.0 
     client_loaders_non_iid, test_loader_non_iid, n_features_non_iid = create_partitioned_dataloaders(
         X_g, y_g, num_clients=NUM_CLIENTS_DEFAULT, batch_size=BATCH_SIZE_DEFAULT, non_iid_alpha=NON_IID_ALPHA_EXAMPLE, seed=42
     )
