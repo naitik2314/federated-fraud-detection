@@ -22,8 +22,8 @@ SEED = 42
 NON_IID_ALPHA = 5.0 
 # NON_IID_ALPHA = None 
 
-DP_ENABLED = False 
-DP_TARGET_EPSILON = 2.0 # Current Epsilon for testing
+DP_ENABLED = True 
+DP_TARGET_EPSILON = 50.0 # Current Epsilon for testing
 DP_TARGET_DELTA = 1e-5   
 DP_MAX_GRAD_NORM = 1.2   
 
