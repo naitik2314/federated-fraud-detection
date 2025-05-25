@@ -15,7 +15,7 @@ NUM_CLIENTS = 5
 BATCH_SIZE = 64
 NUM_ROUNDS = 10  
 LOCAL_EPOCHS = 3 
-LEARNING_RATE = 0.001 
+LEARNING_RATE = 0.0005 
 DATA_PATH = "Data/creditcard.csv" 
 SEED = 42 
 
@@ -23,9 +23,9 @@ NON_IID_ALPHA = 5.0
 # NON_IID_ALPHA = None 
 
 DP_ENABLED = True 
-DP_TARGET_EPSILON = 50.0 # Current Epsilon for testing
+DP_TARGET_EPSILON = 10.0 # Current Epsilon for testing
 DP_TARGET_DELTA = 1e-5   
-DP_MAX_GRAD_NORM = 1.2   
+DP_MAX_GRAD_NORM = 1.0   
 
 def set_seeds(seed_value):
     np.random.seed(seed_value)
