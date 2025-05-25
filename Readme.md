@@ -8,7 +8,7 @@ TODO
 - Implement Dirichlet distribution for more real world simulation ✅
 - Add Differential Privacy (DP) ✅
 - Optimize Differential Privacy parameters ✅
-- Build Centralized model to see effects of Dirichilet and Federated learning
+- Build Centralized model to see effects of Dirichilet and Federated learning ✅
 
 
 IMP Links
