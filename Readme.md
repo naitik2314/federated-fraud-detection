@@ -3,7 +3,7 @@
 A proof-of-concept system demonstrating how multiple parties (e.g., banks) can collaboratively train a powerful fraud detection model using Federated Learning (FL) and Differential Privacy (DP), without sharing their sensitive raw data. This project explores the challenges and trade-offs of applying these privacy-enhancing technologies in a realistic, highly imbalanced, and non-identically distributed data environment.
 
 <p align="center">
-  <img src="path/to/your/image.png" alt="Federated Learning Architecture">
+  <img src="https://flower.ai/docs/framework/_images/flower-architecture-basic-architecture.svg" alt="Federated Learning Architecture">
 </p>
 <p align="center">Image courtesy of the Flower Framework</p>
 
